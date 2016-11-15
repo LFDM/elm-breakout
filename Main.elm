@@ -1,4 +1,3 @@
-import Html.App as App
 import Html exposing (Html, text)
 import Mouse
 import Svg
@@ -302,8 +301,8 @@ view model =
     Lost -> text "Game Over"
     Won -> text "Victory!"
 
-main : Program Never
-main = App.program {
+main : Program Never Model Msg
+main = Html.program {
     init = init,
     update = update,
     subscriptions = subscriptions,
