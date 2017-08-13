@@ -35,8 +35,8 @@ type alias Moveable = {
   dy: Int
 }
 
-type State = Playing | Won | Lost | Waiting
-type Msg = MouseMove Int Int | Tick | Space | Noop
+type State = Playing | Pause | Won | Lost | Waiting
+type Msg = MouseMove Int Int | Tick | Space | P | Noop
 
 type alias Model = {
   state: State,
@@ -71,7 +71,7 @@ colorToCss color =
   in "rgba(" ++ inner ++ "," ++ (toString alpha) ++ ")"
 
 stdBlock : Int -> Int -> C.Color -> Block
-stdBlock x y c = { x = x, y = y, w = 50, h = 20, color = c, acceleration = 1, score = 10 }
+stdBlock x y c = { x = x, y = y, w = 90, h = 30, color = c, acceleration = 1, score = 10 }
 
 wallHit : VelocityChanger -> HitEffect
 wallHit execute = { hit = OtherHit, score = 0, execute = execute }
@@ -79,19 +79,26 @@ wallHit execute = { hit = OtherHit, score = 0, execute = execute }
 paddleHit : VelocityChanger -> HitEffect
 paddleHit execute = { hit = OtherHit, score = -1, execute = execute }
 
+blockHit : (Acceleration -> VelocityChanger) -> Block -> HitEffect
+blockHit fn block = { hit = BlockHit block, score = block.score, execute = fn (block.acceleration) }
+
 level1 : List Block
 level1 = [
     stdBlock 10 80 C.red,
     stdBlock 66 80 C.red,
-    stdBlock 117 80 C.red
+    stdBlock 117 80 C.red,
+    stdBlock 110 180 C.red,
+    stdBlock 166 180 C.red,
+    stdBlock 10 180 C.red,
+    stdBlock 66 180 C.red
   ]
 
 initialState : Model
 initialState = {
     state = Waiting,
-    field = { x = 10, y = 10, w = 600, h = 600 },
-    paddle = { x = 20, y = 580, w = 80, h = 20 },
-    ball = { x = 20, y = 200, dx = 5, dy = 3 },
+    field = { x = 10, y = 10, w = 800, h = 800},
+    paddle = { x = 20, y = 780, w = 80, h = 20 },
+    ball = { x = 20, y = 750, dx = 5, dy = -3 },
     blocks = level1,
     score = 0
   }
@@ -117,19 +124,31 @@ applyHit hE m =
     Just h ->
       case h.hit of
         OtherHit -> { m | score = m.score + h.score, ball = applyVelocity h.execute m.ball }
-        BlockHit b -> m
+        BlockHit block -> { m |
+            score = m.score + h.score,
+            ball = applyVelocity h.execute m.ball,
+            blocks = List.filter (\b -> b /= block) m.blocks
+          }
+
 
 applyHits : Model -> List (Maybe HitEffect) -> Model
 applyHits = List.foldl applyHit
 
 isLeftHit : Rect a -> Moveable -> Bool
 isLeftHit r { x, y } =
-  let rY2 = r.y + r.h
-  in x >= r.x && y >= rY2 && y <= r.y
+  x >= r.x && x <= (r.x + r.w) && y >= (r.y + r.h) && y <= r.y
+
+isRightHit : Rect a -> Moveable -> Bool
+isRightHit r { x, y } =
+  x <= (r.x + r.w) && x >= r.x && y >= (r.y + r.h) && y <= r.y
 
 isTopHit : Rect a -> Moveable -> Bool
 isTopHit r { x, y } =
-  y >= (r.y) && x >= r.x && x <= (r.x + r.w)
+  y >= r.y && y <= (r.y + r.h) && x >= r.x && x <= (r.x + r.w)
+
+isBottomHit : Rect a -> Moveable -> Bool
+isBottomHit r { x, y } =
+  y <= (r.y + r.h) && y <= r.y && x >= r.x && x <= (r.x + r.w)
 
 getXWallHit : Model -> Maybe HitEffect
 getXWallHit { field, ball } =
@@ -149,12 +168,21 @@ getPaddleHit : Model -> Maybe HitEffect
 getPaddleHit { paddle, ball, score } =
   if isTopHit paddle ball then Just (paddleHit (bounceY 1)) else Nothing
 
+getBlockHit : Moveable -> Block -> List (Maybe HitEffect)
+getBlockHit ball block =
+  let y = if isTopHit block ball || isBottomHit block ball then Just (blockHit bounceY block) else Nothing
+      x = if isLeftHit block ball || isRightHit block ball then Just (blockHit bounceX block) else Nothing
+  in [y, x]
+
+getBlockHits : Model -> List (Maybe HitEffect)
+getBlockHits { blocks, ball } = List.concatMap (getBlockHit ball) blocks
+
 collectWallHits : Model -> List (Maybe HitEffect)
 collectWallHits model = [
     getXWallHit model,
     getUpperWallHit model,
     getPaddleHit model
-  ]
+  ] ++ getBlockHits model
 
 collectHits : Model -> List (Maybe HitEffect)
 collectHits model = List.concat [
@@ -180,7 +208,6 @@ handleHits model =
     else
       (checkForWin << (applyHits model) << collectHits) model
 
-
 movePaddle : Model -> Int -> Model
 movePaddle model mouseX =
   let leftBoundary = model.field.x
@@ -189,6 +216,10 @@ movePaddle model mouseX =
       { paddle } = model
   in { model | paddle = { paddle | x = nextX } }
 
+changeState : State -> Model -> (Model, Cmd Msg)
+changeState state model =
+  ({ model | state = state }, Cmd.none)
+
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
   case model.state of
@@ -196,11 +227,14 @@ update msg model =
     Won  -> (model, Cmd.none)
     Waiting ->
       case msg of
-        Space ->
-          let nextModel = { model | state = Playing }
-          in (nextModel, Cmd.none)
+        Space -> changeState Playing model
         _ -> (model, Cmd.none)
 
+    Pause ->
+        case msg of
+          Space -> changeState Playing model
+          P -> changeState Playing model
+          _ -> (model, Cmd.none)
     Playing ->
       case msg of
         MouseMove mouseX _ ->
@@ -209,7 +243,15 @@ update msg model =
         Tick ->
           let nextModel = handleHits <| moveBall model
           in (nextModel, Cmd.none)
+        P -> changeState Pause model
         _ -> (model, Cmd.none)
+
+handleKeyUp : Int -> Msg
+handleKeyUp kc =
+  case kc of
+    32 -> Space
+    80 -> P
+    _ -> Noop
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
@@ -218,7 +260,8 @@ subscriptions model =
       let moves = Mouse.moves (\{x, y} -> MouseMove x y)
           ticks = Time.every (Time.second / 40) <| always Tick
       in Sub.batch [ moves, ticks ]
-    Waiting -> Keyboard.ups (\kc -> if kc == 32 then Space else Noop)
+    Pause -> Keyboard.ups handleKeyUp
+    Waiting -> Keyboard.ups handleKeyUp
 
     Lost -> Sub.none
     Won -> Sub.none
@@ -266,18 +309,22 @@ drawBlock { x, y, w, h, color } =
 drawBlocks : List Block -> List (Svg.Svg Msg)
 drawBlocks = List.map drawBlock
 
+drawGame : Model -> Html Msg
+drawGame model =
+  Svg.svg [
+    SA.width <| toString (model.field.w + (model.field.x * 2)),
+    SA.height <| toString (model.field.h + (model.field.y * 2))
+  ] ([
+    drawField model.field,
+    drawPaddle model.paddle,
+    drawBall model.ball.x model.ball.y
+  ] ++ drawBlocks model.blocks)
+
 view : Model -> Html Msg
 view model =
   case model.state of
-    Playing ->
-      Svg.svg [
-        SA.width <| toString (model.field.w + (model.field.x * 2)),
-        SA.height <| toString (model.field.h + (model.field.y * 2))
-      ] ([
-        drawField model.field,
-        drawPaddle model.paddle,
-        drawBall model.ball.x model.ball.y
-      ] ++ drawBlocks model.blocks)
+    Playing -> drawGame model
+    Pause -> drawGame model
     Waiting -> text "Press SPACE to start"
     Lost -> text "You lost"
     Won -> text "You won"
