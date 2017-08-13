@@ -127,7 +127,6 @@ applyHit hE m =
 applyHits : Model -> List (Maybe HitEffect) -> Model
 applyHits = List.foldl applyHit
 
-
 getXWallHit : Model -> Maybe HitEffect
 getXWallHit { field, ball } =
   let hitRight { x, w } b = x + w <= b.x

@@ -33,16 +33,17 @@ isRightHit : Rect a -> Point -> Bool
 isRightHit r { x, y } =
   x <= (r.x + r.w) && x >= r.x && y >= (r.y + r.h) && y <= r.y
 
+isTopHit : Rect a -> Point -> Bool
+isTopHit r { x, y } =
+  y >= (r.y + r.h) && y <= r.y && x >= r.x && x <= (r.x + r.w)
+
+isBottomHit : Rect a -> Point -> Bool
+isBottomHit r { x, y } =
+  y <= r.y && y <= (r.y + r.h) && x >= r.x && x <= (r.x + r.w)
+
 isXHit : Rect a -> Point -> Bool
 isXHit r b = isLeftHit r b || isRightHit r b
 
 isYHit : Rect a -> Point -> Bool
 isYHit r b = isTopHit r b || isBottomHit r b
 
-isTopHit : Rect a -> Point -> Bool
-isTopHit r { x, y } =
-  y >= r.y && y <= (r.y + r.h) && x >= r.x && x <= (r.x + r.w)
-
-isBottomHit : Rect a -> Point -> Bool
-isBottomHit r { x, y } =
-  y <= (r.y + r.h) && y <= r.y && x >= r.x && x <= (r.x + r.w)
