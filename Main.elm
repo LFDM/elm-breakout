@@ -6,6 +6,7 @@ import Svg
 import Svg.Attributes as SA
 import Time
 import Debug
+import Array
 import Shapes exposing (..)
 
 type alias Acceleration = Int
@@ -65,7 +66,7 @@ colorToCss color =
   in "rgba(" ++ inner ++ "," ++ (toString alpha) ++ ")"
 
 stdBlock : Int -> Int -> C.Color -> Block
-stdBlock x y c = { x = x, y = y, w = 90, h = 30, color = c, acceleration = 1, score = 10 }
+stdBlock x y c = { x = x, y = y, w = 80, h = 30, color = c, acceleration = 1, score = 10 }
 
 wallHit : VelocityChanger -> HitEffect
 wallHit execute = { hit = OtherHit, score = 0, execute = execute }
@@ -77,22 +78,30 @@ blockHit : (Acceleration -> VelocityChanger) -> Block -> HitEffect
 blockHit fn block = { hit = BlockHit block, score = block.score, execute = fn (block.acceleration) }
 
 level1 : List Block
-level1 = [
-    stdBlock 20 80 C.red,
-    stdBlock 120 80 C.red,
-    stdBlock 220 80 C.red,
-    stdBlock 120 180 C.red,
-    stdBlock 220 180 C.red,
-    stdBlock 20 180 C.red,
-    stdBlock 120 180 C.red
-  ]
+level1 =
+  let leftPad = 60
+      leftMargin = 20
+      topPad = 60
+      topMargin = 40
+      colors = Array.fromList [C.yellow, C.orange, C.red, C.green, C.blue]
+      rows = [0, 1, 2, 3, 4]
+      getColor i =
+        case Array.get i colors of
+          Nothing -> C.black
+          Just c -> c
+      toColumn yI xI =
+        let x = (leftPad + (80 * xI) + (leftMargin * xI))
+            y = (topPad + (30 * yI) + (topMargin * yI))
+        in stdBlock x y (getColor yI)
+      toRow i = List.map (toColumn i) (List.range 0 6)
+  in List.concatMap toRow (List.range 0 4)
 
 initialState : Model
 initialState = {
     state = Waiting,
     field = { x = 10, y = 10, w = 800, h = 800},
-    paddle = { x = 20, y = 780, w = 80, h = 20 },
-    ball = { x = 20, y = 250, dx = 5, dy = 3 },
+    paddle = { x = 380, y = 780, w = 80, h = 20 },
+    ball = { x = 20, y = 700, dx = 5, dy = -3 },
     blocks = level1,
     score = 0
   }
