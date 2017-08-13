@@ -40,7 +40,7 @@ initialState = {
     state = Waiting,
     field = { x = 100, y = 100, w = 8000, h = 8000},
     paddle = { x = 3800, y = 7800, w = 1600, h = 200 },
-    ball = { x = 200, y = 7000, dx = 50, dy = -100 },
+    ball = { x = 400, y = 7000, dx = 50, dy = -100 },
     blocks = Levels.level1,
     score = 0
   }
@@ -89,9 +89,43 @@ getUpperWallHit { field, ball } =
     then Just (wallHit (bounceY 1))
     else Nothing
 
+rotateVector : (Int, Int) -> Int -> (Int, Int)
+rotateVector (xI, yI) angle =
+  let x = toFloat xI
+      y = toFloat yI
+      a = -(toFloat angle) * (pi / 180)
+      c = cos a
+      s = sin a
+      nextX = round (x * c - y * s)
+      nextY = round (x * s + y * c)
+  in (nextX, nextY)
+
+getAngle : (Int, Int) -> Int
+getAngle (xI, yI) =
+  let angle = atan2 (toFloat xI) (toFloat yI)
+      degrees = (toFloat 180) * angle / pi
+  in (360 + (round degrees)) % 360
+
+paddleBounce : Rect a -> Moveable -> VelocityChanger
+paddleBounce paddle ball =
+  let angle = getAngle (ball.dx, ball.dy)
+      paddleX1 = toFloat paddle.x
+      paddleX2 = toFloat (paddle.x + paddle.w)
+      segment = round (((toFloat ball.x) - paddleX1) / (paddleX2 - paddleX1) * 100 / 20)
+      rotation =
+        case segment of
+          0 -> 180
+          1 -> 180 - (angle * 2)
+          2 -> 180 - (angle * 2)
+          3 -> 180 - (angle * 2)
+          4 -> 180
+          _ -> 180 - (angle * 2)
+      yyy = Debug.log "yyy" (rotation, segment, angle)
+  in (\vector -> rotateVector vector rotation)
+
 getPaddleHits : Model -> List (Maybe HitEffect) --there can be more than one
 getPaddleHits { paddle, ball, score } =
-  let top = if isTopHit paddle (asLine ball) then Just (paddleHit (bounceY 1)) else Nothing
+  let top = if isTopHit paddle (asLine ball) then Just (paddleHit (paddleBounce paddle ball)) else Nothing
   in [top]
 
 getBlockHit : Moveable -> Block -> List (Maybe HitEffect)
