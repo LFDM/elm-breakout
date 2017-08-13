@@ -1,4 +1,5 @@
 import Html exposing (Html, text, div)
+import Html.Attributes as HA
 import Keyboard
 import Mouse
 import Color as C
@@ -40,7 +41,7 @@ initialState = {
     state = Waiting,
     field = { x = 100, y = 100, w = 8000, h = 8000},
     paddle = { x = 3800, y = 7800, w = 1600, h = 200 },
-    ball = { x = 400, y = 7000, dx = 50, dy = -100 },
+    ball = { x = 4600, y = 7700, dx = 50, dy = -100 },
     blocks = Levels.level1,
     score = 0
   }
@@ -178,21 +179,18 @@ changeState : State -> Model -> (Model, Cmd Msg)
 changeState state model =
   ({ model | state = state }, Cmd.none)
 
+startPlay : (Model, Cmd Msg)
+startPlay = changeState Playing initialState
+
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
-  case model.state of
-    Lost -> (model, Cmd.none)
-    Won  -> (model, Cmd.none)
-    Waiting ->
-      case msg of
-        Space -> changeState Playing model
-        _ -> (model, Cmd.none)
-
+  let noop = (model, Cmd.none)
+  in case model.state of
     Pause ->
         case msg of
           Space -> changeState Playing model
           P -> changeState Playing model
-          _ -> (model, Cmd.none)
+          _ -> noop
     Playing ->
       case msg of
         MouseMove mouseX _ ->
@@ -202,7 +200,11 @@ update msg model =
           let nextModel = handleHits <| moveBall model
           in (nextModel, Cmd.none)
         P -> changeState Pause model
-        _ -> (model, Cmd.none)
+        _ -> noop
+    _ ->
+      case msg of
+        Space -> startPlay
+        _ -> noop
 
 handleKeyUp : Int -> Msg
 handleKeyUp kc =
@@ -219,11 +221,7 @@ subscriptions model =
           keys = Keyboard.ups handleKeyUp
           ticks = Time.every (Time.second / 40) <| always Tick
       in Sub.batch [ moves, keys, ticks ]
-    Pause -> Keyboard.ups handleKeyUp
-    Waiting -> Keyboard.ups handleKeyUp
-
-    Lost -> Sub.none
-    Won -> Sub.none
+    _ -> Keyboard.ups handleKeyUp
 
 drawField : Rect a -> Svg.Svg Msg
 drawField field =
@@ -270,9 +268,22 @@ drawBlocks = List.map drawBlock
 
 drawGameHeader : Model -> Html Msg
 drawGameHeader model =
-  div []
-    [ text <| "Score: " ++ toString model.score
-    ]
+  let score = text <| "Score: " ++ toString model.score
+      s = HA.style [
+        ("margin-left", (toDimPx model.field.x)),
+        ("display", "flex"),
+        ("justify-content", "space-between"),
+        ("width", (toDimPx model.field.w))
+      ]
+  in case model.state of
+    Won ->
+        div [s]
+          [ div [] [score], div [] [text "You won! Press space to start again"] ]
+    Lost ->
+      div [s]
+        [ div [] [score], div [] [text "You lost! Press space to start again"] ]
+    _ ->
+      div [s] [score]
 
 drawGameControls : Model -> Html Msg
 drawGameControls model =
@@ -297,14 +308,17 @@ drawGame model =
 toDim : Int -> String
 toDim value = (toString << round << (\x -> x / 10) << toFloat) value
 
+toDimPx : Int -> String
+toDimPx value = (toDim value) ++ "px"
+
 view : Model -> Html Msg
 view model =
   case model.state of
     Playing -> drawGame model
     Pause -> drawGame model
     Waiting -> text "Press SPACE to start"
-    Lost -> text "You lost"
-    Won -> text "You won"
+    Lost -> drawGame model
+    Won -> drawGame model
 
 main : Program Never Model Msg
 main = Html.program {
