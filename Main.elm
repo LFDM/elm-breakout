@@ -8,47 +8,8 @@ import Time
 import Debug
 import Array
 import Shapes exposing (..)
-
-type alias Acceleration = Int
-
-type alias Block = {
-  score: Int,
-  acceleration: Acceleration,
-  x: Int,
-  y: Int,
-  w: Int,
-  h: Int,
-  color: C.Color
-}
-
-type alias VelocityChanger = ((Int, Int) -> (Int, Int))
-
-type alias Moveable = {
-  x: Int,
-  y: Int,
-  dx: Int,
-  dy: Int
-}
-
-type State = Playing | Pause | Won | Lost | Waiting
-type Msg = MouseMove Int Int | Tick | Space | P | Noop
-
-type alias Model = {
-  state: State,
-  field: Rect {},
-  paddle: Rect {},
-  ball: Moveable,
-  blocks : List Block,
-  score : Int
-}
-
-type Hit = BlockHit Block | OtherHit
-
-type alias HitEffect = {
-  execute: VelocityChanger,
-  hit: Hit,
-  score: Int
-}
+import Types exposing (..)
+import Levels
 
 asLine : Moveable -> Line
 asLine { x, y, dx, dy } = Line (Point (x - dx) (y - dy)) (Point x y)
@@ -65,9 +26,6 @@ colorToCss color =
       inner = (String.join "," << List.map toString) [red, green, blue]
   in "rgba(" ++ inner ++ "," ++ (toString alpha) ++ ")"
 
-stdBlock : Int -> Int -> C.Color -> Block
-stdBlock x y c = { x = x, y = y, w = 80, h = 30, color = c, acceleration = 1, score = 10 }
-
 wallHit : VelocityChanger -> HitEffect
 wallHit execute = { hit = OtherHit, score = 0, execute = execute }
 
@@ -77,32 +35,13 @@ paddleHit execute = { hit = OtherHit, score = -1, execute = execute }
 blockHit : (Acceleration -> VelocityChanger) -> Block -> HitEffect
 blockHit fn block = { hit = BlockHit block, score = block.score, execute = fn (block.acceleration) }
 
-level1 : List Block
-level1 =
-  let leftPad = 60
-      leftMargin = 20
-      topPad = 60
-      topMargin = 40
-      colors = Array.fromList [C.yellow, C.orange, C.red, C.green, C.blue]
-      rows = [0, 1, 2, 3, 4]
-      getColor i =
-        case Array.get i colors of
-          Nothing -> C.black
-          Just c -> c
-      toColumn yI xI =
-        let x = (leftPad + (80 * xI) + (leftMargin * xI))
-            y = (topPad + (30 * yI) + (topMargin * yI))
-        in stdBlock x y (getColor yI)
-      toRow i = List.map (toColumn i) (List.range 0 6)
-  in List.concatMap toRow (List.range 0 4)
-
 initialState : Model
 initialState = {
     state = Waiting,
     field = { x = 10, y = 10, w = 800, h = 800},
-    paddle = { x = 380, y = 780, w = 80, h = 20 },
+    paddle = { x = 380, y = 780, w = 160, h = 20 },
     ball = { x = 20, y = 700, dx = 5, dy = -3 },
-    blocks = level1,
+    blocks = Levels.level1,
     score = 0
   }
 
@@ -152,8 +91,7 @@ getUpperWallHit { field, ball } =
 
 getPaddleHits : Model -> List (Maybe HitEffect) --there can be more than one
 getPaddleHits { paddle, ball, score } =
-  let x = Debug.log "hit" (paddle, (isTopHit paddle (asLine ball)), asLine ball, getTopRight paddle, getTopLeft paddle)
-      top = if isTopHit paddle (asLine ball) then Just (paddleHit (bounceY 1)) else Nothing
+  let top = if isTopHit paddle (asLine ball) then Just (paddleHit (bounceY 1)) else Nothing
   in [top]
 
 getBlockHit : Moveable -> Block -> List (Maybe HitEffect)
@@ -302,6 +240,11 @@ drawGameHeader model =
     [ text <| "Score: " ++ toString model.score
     ]
 
+drawGameControls : Model -> Html Msg
+drawGameControls model =
+  div []
+    []
+
 drawGame : Model -> Html Msg
 drawGame model =
   div []
@@ -314,6 +257,7 @@ drawGame model =
         drawPaddle model.paddle,
         drawBall model.ball.x model.ball.y
       ] ++ drawBlocks model.blocks)
+    , drawGameControls model
     ]
 
 view : Model -> Html Msg
