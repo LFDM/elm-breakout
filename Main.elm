@@ -1,266 +1,184 @@
 import Html exposing (Html, text)
+import Keyboard
 import Mouse
+import Color as C
 import Svg
 import Svg.Attributes as SA
 import Time
 
-type alias Block = (Int, Int)
+type alias Point = {
+  x: Int,
+  y: Int
+}
 
-type alias PlayingModel = {
-    paddleX: Int,
-    ballX: Int,
-    ballY: Int,
-    ballDX : Int,
-    ballDY : Int,
-    blocks : List Block
-  }
-type Model = Playing PlayingModel | Lost | Won
-type Msg = MouseMove Int Int | UpdateBallPosition
+type alias Rect a = { a |
+  x: Int,
+  y: Int,
+  w: Int,
+  h: Int
+}
 
-startingBlocks : List Block
-startingBlocks= [
-    (15, 80), (66, 80), (117, 80), (168, 80), (219, 80), (270, 80), (321, 80), (372, 80), (423, 80), (474, 80), (525, 80),
-    (555, 101), (504, 101), (453, 101), (402, 101), (351, 101), (300, 101), (249, 101), (198, 101), (147, 101), (96, 101), (45, 101),
-    (15, 122), (66, 122), (117, 122), (168, 122), (219, 122), (270, 122), (321, 122), (372, 122), (423, 122), (474, 122), (525, 122)
+type alias Acceleration = Int
+
+type alias Block = {
+  score: Int,
+  acceleration: Acceleration,
+  x: Int,
+  y: Int,
+  w: Int,
+  h: Int,
+  color: C.Color
+}
+
+type alias VelocityChanger = (Int, Int) -> (Int, Int)
+
+type alias Moveable = {
+  x: Int,
+  y: Int,
+  dx: Int,
+  dy: Int
+}
+
+type State = Playing | Won | Lost | Waiting
+type Msg = MouseMove Int Int | Tick | Space | Noop
+
+type alias Model = {
+  state: State,
+  field: Rect {},
+  paddle: Rect {},
+  ball: Moveable,
+  blocks : List Block
+}
+
+type Hit = BlockHit Block | OtherHit
+
+type alias HitEffect = {
+  execute: VelocityChanger,
+  hit: Hit,
+  score: Int
+}
+
+getRightX : Rect a -> Int
+getRightX { x, w } = x + w
+
+colorToCss : C.Color -> String
+colorToCss color =
+  let { red, green, blue, alpha } = C.toRgb color
+      inner = (String.join "," << List.map toString) [red, green, blue]
+  in "rgba(" ++ inner ++ "," ++ (toString alpha) ++ ")"
+
+stdBlock : Int -> Int -> C.Color -> Block
+stdBlock x y c = { x = x, y = y, w = 50, h = 20, color = c, acceleration = 1, score = 10 }
+
+level1 : List Block
+level1 = [
+    stdBlock 10 80 C.red,
+    stdBlock 66 80 C.red,
+    stdBlock 117 80 C.red
   ]
 
 initialState : Model
-initialState = Playing {
-    paddleX = 10,
-    ballX = 20,
-    ballY = 200,
-    ballDX = 5,
-    ballDY = 3,
-    blocks = startingBlocks
+initialState = {
+    state = Waiting,
+    field = { x = 10, y = 10, w = 600, h = 600 },
+    paddle = { x = 20, y = 580, w = 80, h = 20 },
+    ball = { x = 20, y = 200, dx = 5, dy = 3 },
+    blocks = level1
   }
 
 init : (Model, Cmd Msg)
 init = (initialState, Cmd.none)
 
-moveBall : PlayingModel -> PlayingModel
+moveBall : Model -> Model
 moveBall model =
-  let { ballX, ballDX, ballY, ballDY } = model
-      (newBallX, newBallY) = (ballX + ballDX, ballY + ballDY)
-  in { model | ballX = newBallX, ballY = newBallY }
+  let { ball } = model
+      nextBall = { ball | x = ball.x + ball.dx, y = ball.y + ball.dy }
+  in { model | ball = nextBall  }
 
-type CollisionType
-  = PlayFieldTop
-  | PlayFieldBottom
-  | PlayFieldLeft
-  | PlayFieldRight
-  | PaddleTop
-  | PaddleBottom
-  | PaddleLeft
-  | PaddleRight
-  | BlockTop Block
-  | BlockBottom Block
-  | BlockLeft Block
-  | BlockRight Block
+applyHits : Model -> List (Maybe HitEffect) -> Model
+applyHits model hits = model
 
-detectTopWallCollision : PlayingModel -> Maybe CollisionType
-detectTopWallCollision { ballY } =
-  if ballY <= 13
-    then Just PlayFieldTop
-    else Nothing
+collectHits : Model -> List (Maybe HitEffect)
+collectHits model = []
 
-detectBottomWallCollision : PlayingModel -> Maybe CollisionType
-detectBottomWallCollision { ballY } =
-  if ballY >= 607
-    then Just PlayFieldBottom
-    else Nothing
+hasHitBottom : Rect a -> Moveable -> Bool
+hasHitBottom field ball = (field.y + field.h) <= ball.y
 
-detectLeftWallCollision : PlayingModel -> Maybe CollisionType
-detectLeftWallCollision { ballX } =
-  if ballX <= 13
-    then Just PlayFieldLeft
-    else Nothing
+checkForWin : Model -> Model
+checkForWin model =
+  if (List.length model.blocks) > 0
+    then model
+    else { model | state = Won }
 
-detectRightWallCollision : PlayingModel -> Maybe CollisionType
-detectRightWallCollision { ballX } =
-  if ballX >= 607
-    then Just PlayFieldRight
-    else Nothing
+handleHits : Model -> Model
+handleHits model =
+  if hasHitBottom model.field model.ball
+    --then { model | state = Lost }
+    then model
+    else
+      (checkForWin << (applyHits model) << collectHits) model
 
-collectWallCollisions : PlayingModel -> List CollisionType
-collectWallCollisions model =
-  List.filterMap identity [
-      detectTopWallCollision model,
-      detectBottomWallCollision model,
-      detectLeftWallCollision model,
-      detectRightWallCollision model
-    ]
 
-detectTopRectCollection : CollisionType -> Int -> Int -> Int -> Int -> PlayingModel -> Maybe CollisionType
-detectTopRectCollection collision x y width height { ballX, ballY } =
-  let left = x
-      right = x + width
-      bottom = y + height
-  in
-      if (ballX >= left - 2) && (ballX <= right + 2) && ballY >= y && (ballY <= bottom - 2)
-        then Just collision
-        else Nothing
-
-detectBottomRectCollision : CollisionType -> Int -> Int -> Int -> Int -> PlayingModel -> Maybe CollisionType
-detectBottomRectCollision collision x y width height { ballX, ballY } =
-  let left = x
-      right = x + width
-      bottom = y + height
-  in
-      if (ballX >= left - 2) && (ballX <= right + 2) && (ballY >= y + 2) && (ballY <= bottom + 2)
-        then Just collision
-        else Nothing
-
-detectLeftRectCollision : CollisionType -> Int -> Int -> Int -> Int -> PlayingModel -> Maybe CollisionType
-detectLeftRectCollision collision x y width height { ballX, ballY } =
-  let left = x
-      right = x + width
-      paddleTop = y
-      bottom = y + height
-  in
-      if (ballX >= left - 2) && (ballX <= left + 2) && (ballY >= paddleTop - 1) && (ballY <= bottom + 1)
-        then Just collision
-        else Nothing
-
-detectRightRectCollision : CollisionType -> Int -> Int -> Int -> Int -> PlayingModel -> Maybe CollisionType
-detectRightRectCollision collision x y width height { ballX, ballY } =
-  let left = x
-      right = x + width
-      paddleTop = y
-      bottom = y + height
-  in
-      if (ballX >= right - 2) && (ballX <= right + 2) && (ballY >= paddleTop - 1) && (ballY <= bottom + 1)
-        then Just collision
-        else Nothing
-
-collectPaddleCollisions : PlayingModel -> List CollisionType
-collectPaddleCollisions model =
-  if model.ballY < 570
-    then []
-    else List.filterMap identity [
-          detectTopRectCollection PaddleTop model.paddleX 580 50 20 model,
-          detectBottomRectCollision PaddleBottom model.paddleX 580 50 20 model,
-          detectLeftRectCollision PaddleLeft model.paddleX 580 50 20 model,
-          detectRightRectCollision PaddleRight model.paddleX 580 50 20 model
-        ]
-
-collectBlockCollisions : PlayingModel -> List CollisionType
-collectBlockCollisions model =
-  if model.ballY > 150
-    then []
-    else List.filterMap identity <| List.concatMap (\block ->
-      let (x, y) = block
-      in [
-          detectTopRectCollection   (BlockTop block)    x y 50 20 model,
-          detectBottomRectCollision (BlockBottom block) x y 50 20 model,
-          detectLeftRectCollision   (BlockLeft block)   x y 50 20 model,
-          detectRightRectCollision  (BlockRight block)  x y 50 20 model
-        ]
-      ) model.blocks
-
-reflectVelocity : CollisionType -> (Int, Int) -> (Int, Int)
-reflectVelocity collision (dx, dy) =
-  case collision of
-    PlayFieldTop -> (dx, -dy)
-    PaddleTop    -> (dx, -dy)
-    BlockTop _   -> (dx, -dy)
-
-    PlayFieldBottom -> (dx, -dy)
-    PaddleBottom    -> (dx, -dy)
-    BlockBottom _   -> (dx, -dy)
-
-    PlayFieldLeft -> (-dx, dy)
-    PaddleLeft    -> (-dx, dy)
-    BlockLeft _   -> (-dx, dy)
-
-    PlayFieldRight -> (-dx, dy)
-    PaddleRight    -> (-dx, dy)
-    BlockRight _   -> (-dx, dy)
-
-collectCollisions : PlayingModel -> List CollisionType
-collectCollisions model = List.concat [
-    collectWallCollisions model,
-    collectPaddleCollisions model,
-    collectBlockCollisions model
-  ]
-
-removeHitBlocks : CollisionType -> List Block -> List Block
-removeHitBlocks collision blocks =
-  let removeBlock blocks block = List.filter (\b -> b /= block) blocks
-  in case collision of
-    BlockTop block    -> removeBlock blocks block
-    BlockBottom block -> removeBlock blocks block
-    BlockLeft block   -> removeBlock blocks block
-    BlockRight block  -> removeBlock blocks block
-    _                 -> blocks
-
-applyCollisions : PlayingModel -> List CollisionType -> PlayingModel
-applyCollisions model collisions =
-  let (newBallDX, newBallDY) = List.foldl reflectVelocity (model.ballDX, model.ballDY) collisions
-      newBlocks = List.foldl removeHitBlocks model.blocks collisions
-  in { model | ballDX = newBallDX, ballDY = newBallDY, blocks = newBlocks }
-
-hasHitBottom : List CollisionType -> Bool
-hasHitBottom collisions =
-  List.any (\collision ->
-    case collision of
-      PlayFieldBottom -> True
-      _ -> False
-  ) collisions
-
-handleCollisions : PlayingModel -> Model
-handleCollisions model =
-  let collisions = collectCollisions model
-      postCollisions = applyCollisions model collisions
-  in
-    if hasHitBottom collisions
-      then Lost
-      else
-        if (List.length postCollisions.blocks) > 0
-          then Playing postCollisions
-          else Won
+movePaddle : Model -> Int -> Model
+movePaddle model mouseX =
+  let leftBoundary = model.field.x
+      rightBoundary = (getRightX model.field) - model.paddle.w
+      nextX = clamp leftBoundary rightBoundary mouseX
+      { paddle } = model
+  in { model | paddle = { paddle | x = nextX } }
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
-  case model of
+  case model.state of
     Lost -> (model, Cmd.none)
     Won  -> (model, Cmd.none)
-    Playing model ->
+    Waiting ->
+      case msg of
+        Space ->
+          let nextModel = { model | state = Playing }
+          in (nextModel, Cmd.none)
+        _ -> (model, Cmd.none)
+
+    Playing ->
       case msg of
         MouseMove mouseX _ ->
-          let newPaddleX = clamp 10 560 mouseX
-          in (Playing { model | paddleX = newPaddleX }, Cmd.none)
-        UpdateBallPosition ->
-          let newModel = handleCollisions <| moveBall model
-          in (newModel, Cmd.none)
+          let nextModel = movePaddle model mouseX
+          in (nextModel, Cmd.none)
+        Tick ->
+          let nextModel = handleHits <| moveBall model
+          in (nextModel, Cmd.none)
+        _ -> (model, Cmd.none)
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-  case model of
-    Playing _ ->
+  case model.state of
+    Playing ->
       let moves = Mouse.moves (\{x, y} -> MouseMove x y)
-          ticks = Time.every (Time.second / 40) <| always UpdateBallPosition
+          ticks = Time.every (Time.second / 40) <| always Tick
       in Sub.batch [ moves, ticks ]
+    Waiting -> Keyboard.ups (\kc -> if kc == 32 then Space else Noop)
+
     Lost -> Sub.none
     Won -> Sub.none
 
-drawPlayingField : Svg.Svg Msg
-drawPlayingField =
+drawField : Rect a -> Svg.Svg Msg
+drawField field =
   Svg.rect [
-    SA.x "10",
-    SA.y "10",
-    SA.width "600",
-    SA.height "600",
+    SA.x <| toString field.x,
+    SA.y <| toString field.y,
+    SA.width <| toString field.w,
+    SA.height <| toString field.h,
     SA.stroke "black",
     SA.fill "none"
   ] []
 
-drawPaddle : Int -> Svg.Svg Msg
-drawPaddle paddleX =
+drawPaddle : Rect a -> Svg.Svg Msg
+drawPaddle { x, y, w, h } =
   Svg.rect [
-    SA.x <| toString paddleX,
-    SA.y "580",
-    SA.width "50",
-    SA.height "20",
+    SA.x <| toString x,
+    SA.y <| toString y,
+    SA.width <| toString w,
+    SA.height <| toString h,
     SA.rx "5",
     SA.ry "5"
   ] []
@@ -274,32 +192,33 @@ drawBall ballX ballY =
   ] []
 
 drawBlock : Block -> Svg.Svg Msg
-drawBlock (x, y) =
+drawBlock { x, y, w, h, color } =
   Svg.rect [
       SA.x <| toString x,
       SA.y <| toString y,
-      SA.width "50",
-      SA.height "20"
+      SA.width <| toString w,
+      SA.height <| toString h,
+      SA.style <| "fill:" ++ (colorToCss color)
     ] []
 
 drawBlocks : List Block -> List (Svg.Svg Msg)
-drawBlocks blocks =
-  List.map drawBlock blocks
+drawBlocks = List.map drawBlock
 
 view : Model -> Html Msg
 view model =
-  case model of
-    Playing model ->
+  case model.state of
+    Playing ->
       Svg.svg [
-        SA.width "620",
-        SA.height "620"
+        SA.width <| toString (model.field.w + (model.field.x * 2)),
+        SA.height <| toString (model.field.h + (model.field.y * 2))
       ] ([
-        drawPlayingField,
-        drawPaddle model.paddleX,
-        drawBall model.ballX model.ballY
+        drawField model.field,
+        drawPaddle model.paddle,
+        drawBall model.ball.x model.ball.y
       ] ++ drawBlocks model.blocks)
-    Lost -> text "Game Over"
-    Won -> text "Victory!"
+    Waiting -> text "Press SPACE to start"
+    Lost -> text "You lost"
+    Won -> text "You won"
 
 main : Program Never Model Msg
 main = Html.program {
