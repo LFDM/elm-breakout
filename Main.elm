@@ -38,9 +38,9 @@ blockHit fn block = { hit = BlockHit block, score = block.score, execute = fn (b
 initialState : Model
 initialState = {
     state = Waiting,
-    field = { x = 10, y = 10, w = 800, h = 800},
-    paddle = { x = 380, y = 780, w = 160, h = 20 },
-    ball = { x = 20, y = 700, dx = 5, dy = -3 },
+    field = { x = 100, y = 100, w = 8000, h = 8000},
+    paddle = { x = 3800, y = 7800, w = 1600, h = 200 },
+    ball = { x = 200, y = 7000, dx = 50, dy = -100 },
     blocks = Levels.level1,
     score = 0
   }
@@ -136,7 +136,7 @@ movePaddle : Model -> Int -> Model
 movePaddle model mouseX =
   let leftBoundary = model.field.x
       rightBoundary = (.x (getTopRight model.field)) - model.paddle.w
-      nextX = clamp leftBoundary rightBoundary mouseX
+      nextX = clamp leftBoundary rightBoundary (mouseX * 10)
       { paddle } = model
   in { model | paddle = { paddle | x = nextX } }
 
@@ -194,10 +194,10 @@ subscriptions model =
 drawField : Rect a -> Svg.Svg Msg
 drawField field =
   Svg.rect [
-    SA.x <| toString field.x,
-    SA.y <| toString field.y,
-    SA.width <| toString field.w,
-    SA.height <| toString field.h,
+    SA.x <| toDim field.x,
+    SA.y <| toDim field.y,
+    SA.width <| toDim field.w,
+    SA.height <| toDim field.h,
     SA.stroke "black",
     SA.fill "none"
   ] []
@@ -205,10 +205,10 @@ drawField field =
 drawPaddle : Rect a -> Svg.Svg Msg
 drawPaddle { x, y, w, h } =
   Svg.rect [
-    SA.x <| toString x,
-    SA.y <| toString y,
-    SA.width <| toString w,
-    SA.height <| toString h,
+    SA.x <| toDim x,
+    SA.y <| toDim y,
+    SA.width <| toDim w,
+    SA.height <| toDim h,
     SA.rx "5",
     SA.ry "5"
   ] []
@@ -216,18 +216,18 @@ drawPaddle { x, y, w, h } =
 drawBall : Int -> Int -> Svg.Svg Msg
 drawBall ballX ballY =
   Svg.circle [
-    SA.cx <| toString ballX,
-    SA.cy <| toString ballY,
+    SA.cx <| toDim ballX,
+    SA.cy <| toDim ballY,
     SA.r "5"
   ] []
 
 drawBlock : Block -> Svg.Svg Msg
 drawBlock { x, y, w, h, color } =
   Svg.rect [
-      SA.x <| toString x,
-      SA.y <| toString y,
-      SA.width <| toString w,
-      SA.height <| toString h,
+      SA.x <| toDim x,
+      SA.y <| toDim y,
+      SA.width <| toDim w,
+      SA.height <| toDim h,
       SA.style <| "fill:" ++ (colorToCss color)
     ] []
 
@@ -250,8 +250,8 @@ drawGame model =
   div []
     [ drawGameHeader model
     , Svg.svg [
-        SA.width <| toString (model.field.w + (model.field.x * 2)),
-        SA.height <| toString (model.field.h + (model.field.y * 2))
+        SA.width <| toDim (model.field.w + (model.field.x * 2)),
+        SA.height <| toDim (model.field.h + (model.field.y * 2))
       ] ([
         drawField model.field,
         drawPaddle model.paddle,
@@ -259,6 +259,12 @@ drawGame model =
       ] ++ drawBlocks model.blocks)
     , drawGameControls model
     ]
+
+toDim : Int -> String
+toDim value =
+  let x = (toString << round << (\x -> x / 10) << toFloat) value
+      y = Debug.log "xxx" (x, value)
+  in x
 
 view : Model -> Html Msg
 view model =
