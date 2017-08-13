@@ -49,8 +49,8 @@ type alias HitEffect = {
   score: Int
 }
 
-asPoint : Moveable -> Point
-asPoint { x, y } = Point x y
+asLine : Moveable -> Line
+asLine { x, y, dx, dy } = Line (Point (x - dx) (y - dy)) (Point x y)
 
 bounceX : Acceleration -> VelocityChanger
 bounceX acc = (\(dx, dy) -> (-dx * acc, dy * acc))
@@ -92,7 +92,7 @@ initialState = {
     state = Waiting,
     field = { x = 10, y = 10, w = 800, h = 800},
     paddle = { x = 20, y = 780, w = 80, h = 20 },
-    ball = { x = 20, y = 750, dx = 5, dy = -3 },
+    ball = { x = 20, y = 250, dx = 5, dy = 3 },
     blocks = level1,
     score = 0
   }
@@ -141,29 +141,29 @@ getUpperWallHit { field, ball } =
     then Just (wallHit (bounceY 1))
     else Nothing
 
-getPaddleHit : Model -> Maybe HitEffect
-getPaddleHit { paddle, ball, score } =
-  if isTopHit paddle (asPoint ball) then Just (paddleHit (bounceY 1)) else Nothing
+getPaddleHits : Model -> List (Maybe HitEffect) --there can be more than one
+getPaddleHits { paddle, ball, score } =
+  let x = Debug.log "hit" (paddle, (isTopHit paddle (asLine ball)), asLine ball, getTopRight paddle, getTopLeft paddle)
+      top = if isTopHit paddle (asLine ball) then Just (paddleHit (bounceY 1)) else Nothing
+  in [top]
 
 getBlockHit : Moveable -> Block -> List (Maybe HitEffect)
 getBlockHit ball block =
-  let y = if isYHit block (asPoint ball) then Just (blockHit bounceY block) else Nothing
-      x = if isXHit block (asPoint ball) then Just (blockHit bounceX block) else Nothing
+  let y = if isYHit block (asLine ball) then Just (blockHit bounceY block) else Nothing
+      x = if isXHit block (asLine ball) then Just (blockHit bounceX block) else Nothing
   in [y, x]
 
 getBlockHits : Model -> List (Maybe HitEffect)
 getBlockHits { blocks, ball } = List.concatMap (getBlockHit ball) blocks
 
 collectWallHits : Model -> List (Maybe HitEffect)
-collectWallHits model = [
-    getXWallHit model,
-    getUpperWallHit model,
-    getPaddleHit model
-  ] ++ getBlockHits model
+collectWallHits model = [ getXWallHit model, getUpperWallHit model ]
 
 collectHits : Model -> List (Maybe HitEffect)
 collectHits model = List.concat [
-    collectWallHits model
+    collectWallHits model,
+    getPaddleHits model,
+    getBlockHits model
   ]
 
 hasHitBottom : Rect a -> Moveable -> Bool

@@ -1,4 +1,5 @@
 module Shapes exposing (..)
+import Debug
 
 type alias Rect a = { a |
   x: Int,
@@ -9,41 +10,63 @@ type alias Rect a = { a |
 
 type alias Point = { x: Int, y: Int }
 
-getRightX : Rect a -> Int
-getRightX { x, w } = x + w
+type alias Line = { a: Point, b: Point }
 
 getTopRight : Rect a -> Point
-getTopRight { x, y, w, h } = Point (x + w) (y + h)
+getTopRight { x, y, w } = Point (x + w) (y)
 
 getTopLeft : Rect a -> Point
-getTopLeft { x, y, h } = Point x (y + h)
+getTopLeft { x, y } = Point x y
 
 getBottomRight : Rect a -> Point
-getBottomRight { x, w, y } = Point (x + w) y
+getBottomRight { x, y, w, h } = Point (x + w) (y + h)
 
 getBottomLeft : Rect a -> Point
-getBottomLeft { x, y } = Point x y
+getBottomLeft { x, y, h } = Point x (y + h)
 
+isLeftHit : Rect a -> Line -> Bool
+isLeftHit r trajectory =
+  let wall = Line (getTopLeft r) (getBottomLeft r)
+  in not (isWithin r trajectory.a) && haveIntersection wall trajectory
 
-isLeftHit : Rect a -> Point -> Bool
-isLeftHit r { x, y } =
-  x >= r.x && x <= (r.x + r.w) && y >= (r.y + r.h) && y <= r.y
+isRightHit : Rect a -> Line -> Bool
+isRightHit r trajectory =
+  let wall = Line (getTopRight r) (getBottomRight r)
+  in not (isWithin r trajectory.a) && haveIntersection wall trajectory
 
-isRightHit : Rect a -> Point -> Bool
-isRightHit r { x, y } =
-  x <= (r.x + r.w) && x >= r.x && y >= (r.y + r.h) && y <= r.y
+isTopHit : Rect a -> Line -> Bool
+isTopHit r trajectory =
+  let wall = Line (getTopLeft r) (getTopRight r)
+  in not (isWithin r trajectory.a) && haveIntersection wall trajectory
 
-isTopHit : Rect a -> Point -> Bool
-isTopHit r { x, y } =
-  y >= (r.y + r.h) && y <= r.y && x >= r.x && x <= (r.x + r.w)
+isBottomHit : Rect a -> Line -> Bool
+isBottomHit r trajectory =
+  let wall = Line (getBottomLeft r) (getBottomRight  r)
+  in not (isWithin r trajectory.a) && haveIntersection wall trajectory
 
-isBottomHit : Rect a -> Point -> Bool
-isBottomHit r { x, y } =
-  y <= r.y && y <= (r.y + r.h) && x >= r.x && x <= (r.x + r.w)
-
-isXHit : Rect a -> Point -> Bool
+isXHit : Rect a -> Line -> Bool
 isXHit r b = isLeftHit r b || isRightHit r b
 
-isYHit : Rect a -> Point -> Bool
+isYHit : Rect a -> Line -> Bool
 isYHit r b = isTopHit r b || isBottomHit r b
 
+isWithin : Rect a -> Point -> Bool
+isWithin r { x, y } =
+  let a = getTopLeft r
+      d = getBottomRight r
+  in x >= a.x && x <= d.x && y >= a.y && y <= d.y
+
+
+haveIntersection : Line -> Line -> Bool
+haveIntersection { a, b } l =
+  let c = l.a
+      d = l.b
+      denom = ((d.y - c.y) * (b.x - a.x)) - ((d.x - c.x) * (b.y - a.y))
+      numeA = ((d.x - c.x) * (a.y - c.y)) - ((d.y - c.y) * (a.x - c.x))
+      numeB = ((b.x - a.x) * (a.y - c.y)) - ((b.y - a.y) * (a.x - c.x))
+
+      uA = (toFloat numeA) / (toFloat denom)
+      uB = (toFloat numeB) / (toFloat denom)
+  in if denom == 0
+      then False
+      else uA >= 0 && uA <= 1 && uB >= 0 && uB <= 1
