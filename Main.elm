@@ -6,13 +6,7 @@ import Svg
 import Svg.Attributes as SA
 import Time
 import Debug
-
-type alias Rect a = { a |
-  x: Int,
-  y: Int,
-  w: Int,
-  h: Int
-}
+import Shapes exposing (..)
 
 type alias Acceleration = Int
 
@@ -55,8 +49,8 @@ type alias HitEffect = {
   score: Int
 }
 
-getRightX : Rect a -> Int
-getRightX { x, w } = x + w
+asPoint : Moveable -> Point
+asPoint { x, y } = Point x y
 
 bounceX : Acceleration -> VelocityChanger
 bounceX acc = (\(dx, dy) -> (-dx * acc, dy * acc))
@@ -84,13 +78,13 @@ blockHit fn block = { hit = BlockHit block, score = block.score, execute = fn (b
 
 level1 : List Block
 level1 = [
-    stdBlock 10 80 C.red,
-    stdBlock 66 80 C.red,
-    stdBlock 117 80 C.red,
-    stdBlock 110 180 C.red,
-    stdBlock 166 180 C.red,
-    stdBlock 10 180 C.red,
-    stdBlock 66 180 C.red
+    stdBlock 20 80 C.red,
+    stdBlock 120 80 C.red,
+    stdBlock 220 80 C.red,
+    stdBlock 120 180 C.red,
+    stdBlock 220 180 C.red,
+    stdBlock 20 180 C.red,
+    stdBlock 120 180 C.red
   ]
 
 initialState : Model
@@ -130,25 +124,9 @@ applyHit hE m =
             blocks = List.filter (\b -> b /= block) m.blocks
           }
 
-
 applyHits : Model -> List (Maybe HitEffect) -> Model
 applyHits = List.foldl applyHit
 
-isLeftHit : Rect a -> Moveable -> Bool
-isLeftHit r { x, y } =
-  x >= r.x && x <= (r.x + r.w) && y >= (r.y + r.h) && y <= r.y
-
-isRightHit : Rect a -> Moveable -> Bool
-isRightHit r { x, y } =
-  x <= (r.x + r.w) && x >= r.x && y >= (r.y + r.h) && y <= r.y
-
-isTopHit : Rect a -> Moveable -> Bool
-isTopHit r { x, y } =
-  y >= r.y && y <= (r.y + r.h) && x >= r.x && x <= (r.x + r.w)
-
-isBottomHit : Rect a -> Moveable -> Bool
-isBottomHit r { x, y } =
-  y <= (r.y + r.h) && y <= r.y && x >= r.x && x <= (r.x + r.w)
 
 getXWallHit : Model -> Maybe HitEffect
 getXWallHit { field, ball } =
@@ -166,12 +144,12 @@ getUpperWallHit { field, ball } =
 
 getPaddleHit : Model -> Maybe HitEffect
 getPaddleHit { paddle, ball, score } =
-  if isTopHit paddle ball then Just (paddleHit (bounceY 1)) else Nothing
+  if isTopHit paddle (asPoint ball) then Just (paddleHit (bounceY 1)) else Nothing
 
 getBlockHit : Moveable -> Block -> List (Maybe HitEffect)
 getBlockHit ball block =
-  let y = if isTopHit block ball || isBottomHit block ball then Just (blockHit bounceY block) else Nothing
-      x = if isLeftHit block ball || isRightHit block ball then Just (blockHit bounceX block) else Nothing
+  let y = if isYHit block (asPoint ball) then Just (blockHit bounceY block) else Nothing
+      x = if isXHit block (asPoint ball) then Just (blockHit bounceX block) else Nothing
   in [y, x]
 
 getBlockHits : Model -> List (Maybe HitEffect)
@@ -211,7 +189,7 @@ handleHits model =
 movePaddle : Model -> Int -> Model
 movePaddle model mouseX =
   let leftBoundary = model.field.x
-      rightBoundary = (getRightX model.field) - model.paddle.w
+      rightBoundary = (.x (getTopRight model.field)) - model.paddle.w
       nextX = clamp leftBoundary rightBoundary mouseX
       { paddle } = model
   in { model | paddle = { paddle | x = nextX } }
@@ -258,8 +236,9 @@ subscriptions model =
   case model.state of
     Playing ->
       let moves = Mouse.moves (\{x, y} -> MouseMove x y)
+          keys = Keyboard.ups handleKeyUp
           ticks = Time.every (Time.second / 40) <| always Tick
-      in Sub.batch [ moves, ticks ]
+      in Sub.batch [ moves, keys, ticks ]
     Pause -> Keyboard.ups handleKeyUp
     Waiting -> Keyboard.ups handleKeyUp
 
