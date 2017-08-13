@@ -1,4 +1,4 @@
-import Html exposing (Html, text)
+import Html exposing (Html, text, div)
 import Keyboard
 import Mouse
 import Color as C
@@ -185,7 +185,7 @@ checkForWin : Model -> Model
 checkForWin model =
   if (List.length model.blocks) > 0
     then model
-    else { model | state = Won }
+    else { model | state = Won, score = model.score + 500 }
 
 handleHits : Model -> Model
 handleHits model =
@@ -296,16 +296,25 @@ drawBlock { x, y, w, h, color } =
 drawBlocks : List Block -> List (Svg.Svg Msg)
 drawBlocks = List.map drawBlock
 
+drawGameHeader : Model -> Html Msg
+drawGameHeader model =
+  div []
+    [ text <| "Score: " ++ toString model.score
+    ]
+
 drawGame : Model -> Html Msg
 drawGame model =
-  Svg.svg [
-    SA.width <| toString (model.field.w + (model.field.x * 2)),
-    SA.height <| toString (model.field.h + (model.field.y * 2))
-  ] ([
-    drawField model.field,
-    drawPaddle model.paddle,
-    drawBall model.ball.x model.ball.y
-  ] ++ drawBlocks model.blocks)
+  div []
+    [ drawGameHeader model
+    , Svg.svg [
+        SA.width <| toString (model.field.w + (model.field.x * 2)),
+        SA.height <| toString (model.field.h + (model.field.y * 2))
+      ] ([
+        drawField model.field,
+        drawPaddle model.paddle,
+        drawBall model.ball.x model.ball.y
+      ] ++ drawBlocks model.blocks)
+    ]
 
 view : Model -> Html Msg
 view model =
