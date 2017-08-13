@@ -261,10 +261,7 @@ drawGame model =
     ]
 
 toDim : Int -> String
-toDim value =
-  let x = (toString << round << (\x -> x / 10) << toFloat) value
-      y = Debug.log "xxx" (x, value)
-  in x
+toDim value = (toString << round << (\x -> x / 10) << toFloat) value
 
 view : Model -> Html Msg
 view model =
